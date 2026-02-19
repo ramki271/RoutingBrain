@@ -9,7 +9,7 @@ class RoutingRule(BaseModel):
     complexity: Optional[str] = None          # None = match all
     required_capability: Optional[List[str]] = None
     primary_model: str
-    provider: str
+    provider: str = ""   # resolved from virtual registry if empty
     fallback_models: List[str] = []
     model_tier: str
     rationale: str = ""

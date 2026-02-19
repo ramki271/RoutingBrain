@@ -1,3 +1,103 @@
+# ── Virtual Model Registry ────────────────────────────────────────────────────
+# Policies reference virtual model IDs (rb://) only.
+# When a new model version is released, only update the mapping here —
+# never touch the routing policy YAML files.
+#
+# Virtual ID convention:
+#   rb://<tier>_<specialty>
+#
+virtual_models:
+  # ── Fast / Cheap tier ────────────────────────────────────────────────────
+  rb://fast_cheap_code:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    description: "Fast, cheap coding — boilerplate, simple generation"
+
+  rb://fast_cheap_general:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    description: "Fast, cheap general tasks"
+
+  rb://fast_cheap_qa:
+    provider: gemini
+    model: gemini-2.0-flash
+    description: "Lowest latency Q&A and lookups"
+
+  rb://fast_cheap_review:
+    provider: openai
+    model: gpt-4o-mini
+    description: "Fast pattern-matching code review"
+
+  rb://fast_cheap_docs:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    description: "Simple docstrings and inline comments"
+
+  rb://fast_cheap_oss:
+    provider: ollama
+    model: codellama:34b
+    description: "Self-hosted OSS code model — data never leaves infra"
+
+  # ── Balanced tier ────────────────────────────────────────────────────────
+  rb://balanced_code:
+    provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    description: "Best code quality/cost balance"
+
+  rb://balanced_reasoning:
+    provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    description: "Nuanced reasoning for reviews, debugging, docs"
+
+  rb://balanced_data:
+    provider: gemini
+    model: gemini-2.0-pro
+    description: "Large context data analysis (2M token window)"
+
+  rb://balanced_general:
+    provider: openai
+    model: gpt-4o
+    description: "Balanced general purpose"
+
+  # ── Powerful tier ────────────────────────────────────────────────────────
+  rb://powerful_code:
+    provider: anthropic
+    model: claude-opus-4-5-20251101
+    description: "Novel algorithms, complex architecture code"
+
+  rb://powerful_reasoning:
+    provider: anthropic
+    model: claude-opus-4-5-20251101
+    description: "Deep trade-off analysis, architecture decisions"
+
+  rb://powerful_math:
+    provider: openai
+    model: o1
+    description: "Extended mathematical and algorithmic reasoning"
+
+  rb://powerful_debug:
+    provider: openai
+    model: o1
+    description: "Extended thinking for hard bugs and race conditions"
+
+  # ── Local OSS (self-hosted, data never leaves infra) ─────────────────────
+  rb://local_general:
+    provider: ollama
+    model: llama3.1:70b
+    description: "Self-hosted general tasks — safe for all data"
+
+  rb://local_code:
+    provider: ollama
+    model: codellama:34b
+    description: "Self-hosted code generation — safe for proprietary code"
+
+  rb://local_code_specialized:
+    provider: ollama
+    model: deepseek-coder:33b
+    description: "Self-hosted code specialist — competitive with GPT-4 on benchmarks"
+
+
+# ── Concrete Model Registry ───────────────────────────────────────────────────
 models:
   # Anthropic
   - model_id: claude-haiku-4-5-20251001

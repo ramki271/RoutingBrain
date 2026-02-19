@@ -1,5 +1,5 @@
 department: general
-version: "1.0"
+version: "2.0"
 description: "Base fallback policy for all departments"
 
 budget_controls:
@@ -11,36 +11,28 @@ budget_controls:
 rules:
   - name: general_simple
     complexity: simple
-    primary_model: claude-haiku-4-5-20251001
-    provider: anthropic
-    fallback_models:
-      - gpt-4o-mini
+    primary_model: rb://fast_cheap_general
+    fallback_models: [rb://fast_cheap_review]
     model_tier: fast_cheap
     rationale: "Fast and cheap for simple tasks"
 
   - name: general_medium
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Balanced quality and cost"
 
   - name: general_complex
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - claude-sonnet-4-5-20250929
+    primary_model: rb://powerful_reasoning
+    fallback_models: [rb://balanced_reasoning]
     model_tier: powerful
     rationale: "Maximum capability for complex tasks"
 
 default_rule:
   name: base_default
-  primary_model: claude-sonnet-4-5-20250929
-  provider: anthropic
-  fallback_models:
-    - gpt-4o
+  primary_model: rb://balanced_reasoning
+  fallback_models: [rb://balanced_general]
   model_tier: balanced
   rationale: "Safe default"

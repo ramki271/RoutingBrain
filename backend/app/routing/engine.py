@@ -77,7 +77,9 @@ class RoutingEngine:
         # Step 4 — PolicyEngine (risk floor + YAML rule matching + budget guardrails)
         # TODO: pass actual budget_pct from Redis in Phase 3
         budget_pct = 0.0
-        rule = self.policy_engine.match(classification, risk=risk, budget_pct=budget_pct)
+        rule, policy_trace, constraints_applied = self.policy_engine.match(
+            classification, risk=risk, budget_pct=budget_pct
+        )
 
         routing_decision = RoutingDecision(
             primary_model=rule.primary_model,
@@ -87,6 +89,9 @@ class RoutingEngine:
             cost_budget_applied=budget_pct > 0,
             policy_name=f"{classification.department.value}",
             rule_matched=rule.name,
+            virtual_model_id=rule.primary_model if self.policy_engine._virtual and
+                             not self.policy_engine._virtual.is_virtual(rule.primary_model)
+                             else "",
         )
 
         logger.info(
@@ -140,6 +145,8 @@ class RoutingEngine:
                         risk_rationale=risk.rationale,
                         data_residency_note=risk.data_residency_note,
                         audit_required=risk.audit_required,
+                        policy_trace=policy_trace,
+                        constraints_applied=constraints_applied,
                         latency_ms=latency_ms,
                         fallback_used=fallback_used,
                     )
@@ -159,6 +166,8 @@ class RoutingEngine:
                         risk_rationale=risk.rationale,
                         data_residency_note=risk.data_residency_note,
                         audit_required=risk.audit_required,
+                        policy_trace=policy_trace,
+                        constraints_applied=constraints_applied,
                         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
                         completion_tokens=response.usage.completion_tokens if response.usage else 0,
                         latency_ms=latency_ms,

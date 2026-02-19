@@ -1,5 +1,5 @@
 department: rd
-version: "1.0"
+version: "2.0"
 description: "R&D department routing policy — coding, review, testing, architecture, documentation"
 
 budget_controls:
@@ -13,32 +13,24 @@ rules:
   - name: code_gen_simple
     task_type: code_generation
     complexity: simple
-    primary_model: claude-haiku-4-5-20251001
-    provider: anthropic
-    fallback_models:
-      - gpt-4o-mini
-      - codellama:34b
+    primary_model: rb://fast_cheap_code
+    fallback_models: [rb://fast_cheap_review, rb://local_code]
     model_tier: fast_cheap
     rationale: "Fast, cheap, strong on boilerplate"
 
   - name: code_gen_medium
     task_type: code_generation
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_code
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Best code quality/cost balance"
 
   - name: code_gen_complex
     task_type: code_generation
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - claude-sonnet-4-5-20250929
-      - gpt-4o
+    primary_model: rb://powerful_code
+    fallback_models: [rb://balanced_code, rb://balanced_general]
     model_tier: powerful
     rationale: "Novel algorithms need max capability"
 
@@ -46,30 +38,24 @@ rules:
   - name: code_review_simple
     task_type: code_review
     complexity: simple
-    primary_model: gpt-4o-mini
-    provider: openai
-    fallback_models:
-      - claude-haiku-4-5-20251001
+    primary_model: rb://fast_cheap_review
+    fallback_models: [rb://fast_cheap_code]
     model_tier: fast_cheap
     rationale: "Pattern matching, fast"
 
   - name: code_review_medium
     task_type: code_review
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Nuanced structural reasoning"
 
   - name: code_review_complex
     task_type: code_review
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - claude-sonnet-4-5-20250929
+    primary_model: rb://powerful_reasoning
+    fallback_models: [rb://balanced_reasoning]
     model_tier: powerful
     rationale: "Deep security and architecture review"
 
@@ -77,31 +63,24 @@ rules:
   - name: test_gen_simple
     task_type: test_generation
     complexity: simple
-    primary_model: claude-haiku-4-5-20251001
-    provider: anthropic
-    fallback_models:
-      - gpt-4o-mini
-      - codellama:34b
+    primary_model: rb://fast_cheap_code
+    fallback_models: [rb://fast_cheap_review, rb://local_code]
     model_tier: fast_cheap
     rationale: "Boilerplate test scaffolding"
 
   - name: test_gen_medium
     task_type: test_generation
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_code
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Understands code structure for meaningful tests"
 
   - name: test_gen_complex
     task_type: test_generation
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - claude-sonnet-4-5-20250929
+    primary_model: rb://powerful_code
+    fallback_models: [rb://balanced_code]
     model_tier: powerful
     rationale: "Complex integration test suites and edge case coverage"
 
@@ -109,31 +88,24 @@ rules:
   - name: debugging_simple
     task_type: debugging
     complexity: simple
-    primary_model: claude-haiku-4-5-20251001
-    provider: anthropic
-    fallback_models:
-      - gpt-4o-mini
+    primary_model: rb://fast_cheap_code
+    fallback_models: [rb://fast_cheap_review]
     model_tier: fast_cheap
     rationale: "Common errors, quick fix"
 
   - name: debugging_medium
     task_type: debugging
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Multi-file debugging needs reasoning"
 
   - name: debugging_complex
     task_type: debugging
     complexity: complex
-    primary_model: o1
-    provider: openai
-    fallback_models:
-      - claude-opus-4-5-20251101
-      - claude-sonnet-4-5-20250929
+    primary_model: rb://powerful_debug
+    fallback_models: [rb://powerful_reasoning, rb://balanced_reasoning]
     model_tier: powerful
     rationale: "Extended thinking for hard bugs"
 
@@ -141,20 +113,16 @@ rules:
   - name: architecture_simple
     task_type: architecture_design
     complexity: simple
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Simple design decisions"
 
   - name: architecture_complex
     task_type: architecture_design
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://powerful_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: powerful
     rationale: "Best for trade-off analysis"
 
@@ -162,21 +130,16 @@ rules:
   - name: docs_simple
     task_type: documentation
     complexity: simple
-    primary_model: claude-haiku-4-5-20251001
-    provider: anthropic
-    fallback_models:
-      - gpt-4o-mini
-      - llama3.1:70b
+    primary_model: rb://fast_cheap_docs
+    fallback_models: [rb://fast_cheap_review, rb://local_general]
     model_tier: fast_cheap
     rationale: "Simple docstrings and comments"
 
   - name: docs_medium
     task_type: documentation
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Clear technical prose"
 
@@ -184,20 +147,16 @@ rules:
   - name: requirement_analysis_medium
     task_type: requirement_analysis
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Evaluates completeness and ambiguity"
 
   - name: requirement_analysis_complex
     task_type: requirement_analysis
     complexity: complex
-    primary_model: claude-opus-4-5-20251101
-    provider: anthropic
-    fallback_models:
-      - claude-sonnet-4-5-20250929
+    primary_model: rb://powerful_reasoning
+    fallback_models: [rb://balanced_reasoning]
     model_tier: powerful
     rationale: "Deep feasibility and conflict analysis"
 
@@ -205,20 +164,16 @@ rules:
   - name: data_analysis_simple
     task_type: data_analysis
     complexity: simple
-    primary_model: gemini-2.0-flash
-    provider: gemini
-    fallback_models:
-      - gpt-4o-mini
+    primary_model: rb://fast_cheap_qa
+    fallback_models: [rb://fast_cheap_review]
     model_tier: fast_cheap
     rationale: "Large context, low cost"
 
   - name: data_analysis_complex
     task_type: data_analysis
     complexity: complex
-    primary_model: gemini-2.0-pro
-    provider: gemini
-    fallback_models:
-      - claude-opus-4-5-20251101
+    primary_model: rb://balanced_data
+    fallback_models: [rb://powerful_reasoning]
     model_tier: balanced
     rationale: "2M context for large codebases and logs"
 
@@ -226,10 +181,8 @@ rules:
   - name: math_reasoning_complex
     task_type: math_reasoning
     complexity: complex
-    primary_model: o1
-    provider: openai
-    fallback_models:
-      - claude-opus-4-5-20251101
+    primary_model: rb://powerful_math
+    fallback_models: [rb://powerful_reasoning]
     model_tier: powerful
     rationale: "Built specifically for extended mathematical reasoning"
 
@@ -237,29 +190,22 @@ rules:
   - name: qa_simple
     task_type: question_answer
     complexity: simple
-    primary_model: gemini-2.0-flash
-    provider: gemini
-    fallback_models:
-      - claude-haiku-4-5-20251001
-      - gpt-4o-mini
+    primary_model: rb://fast_cheap_qa
+    fallback_models: [rb://fast_cheap_code, rb://fast_cheap_review]
     model_tier: fast_cheap
     rationale: "Lowest latency and cheapest"
 
   - name: qa_medium
     task_type: question_answer
     complexity: medium
-    primary_model: claude-sonnet-4-5-20250929
-    provider: anthropic
-    fallback_models:
-      - gpt-4o
+    primary_model: rb://balanced_reasoning
+    fallback_models: [rb://balanced_general]
     model_tier: balanced
     rationale: "Detailed technical answers"
 
 default_rule:
   name: rd_default
-  primary_model: claude-sonnet-4-5-20250929
-  provider: anthropic
-  fallback_models:
-    - gpt-4o
+  primary_model: rb://balanced_code
+  fallback_models: [rb://balanced_general]
   model_tier: balanced
   rationale: "Safe default for R&D tasks"

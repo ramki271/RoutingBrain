@@ -67,6 +67,12 @@ class ClassificationResult(BaseModel):
     classified_by: ClassifiedBy = ClassifiedBy.META_LLM
 
 
+class PolicyTraceEntry(BaseModel):
+    rule: str
+    result: Literal["matched", "skipped", "risk_override", "budget_override", "fallback_filtered"]
+    reason: str = ""
+
+
 class RoutingDecision(BaseModel):
     primary_model: str
     provider: str
@@ -75,6 +81,7 @@ class RoutingDecision(BaseModel):
     cost_budget_applied: bool = False
     policy_name: str = ""
     rule_matched: str = ""
+    virtual_model_id: str = ""     # original rb:// ID before resolution
 
 
 class RoutingOutcome(BaseModel):
@@ -88,6 +95,8 @@ class RoutingOutcome(BaseModel):
     risk_rationale: str = ""
     data_residency_note: str = ""
     audit_required: bool = False
+    policy_trace: List[PolicyTraceEntry] = Field(default_factory=list)
+    constraints_applied: List[str] = Field(default_factory=list)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_cost_usd: float = 0.0

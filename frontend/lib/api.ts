@@ -104,6 +104,7 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
     if (onRoutingDecision) onRoutingDecision(routing!);
   }
 
+  let lastEvent = "";
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -112,12 +113,51 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
     const lines = chunk.split("\n");
 
     for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
+      // Track event type for named SSE events
+      if (line.startsWith("event: ")) {
+        lastEvent = line.slice(7).trim();
+        continue;
+      }
+
+      if (!line.startsWith("data: ")) {
+        if (line === "") lastEvent = ""; // blank line resets event
+        continue;
+      }
+
       const data = line.slice(6).trim();
       if (data === "[DONE]") break;
 
       try {
         const parsed = JSON.parse(data);
+
+        // Named routing_decision event — full metadata from server
+        if (lastEvent === "routing_decision" || parsed.event === "routing_decision") {
+          const rd = parsed.data || parsed;
+          routing = {
+            request_id: rd.request_id || "",
+            task_type: rd.task_type || "",
+            complexity: rd.complexity || "",
+            department: rd.department || department,
+            confidence: rd.confidence ?? 0,
+            classified_by: rd.classified_by || "",
+            routing_rationale: rd.routing_rationale || "",
+            model_selected: rd.model_selected || "",
+            provider: rd.provider || "",
+            model_tier: rd.model_tier || "",
+            rule_matched: rd.rule_matched || "",
+            fallback_used: rd.fallback_used ?? false,
+            latency_ms: rd.latency_ms ?? 0,
+            risk_level: rd.risk_level || "low",
+            risk_rationale: rd.risk_rationale || "",
+            data_residency_note: rd.data_residency_note || "",
+            audit_required: rd.audit_required ?? false,
+          };
+          if (onRoutingDecision) onRoutingDecision(routing);
+          lastEvent = "";
+          continue;
+        }
+
+        // Normal token delta
         const delta = parsed.choices?.[0]?.delta?.content;
         if (delta) {
           content += delta;
@@ -143,6 +183,33 @@ export async function fetchPolicies() {
   const res = await fetch(`${API_BASE}/internal/routing/policies`, {
     headers: { Authorization: "Bearer rb-dev-key-1" },
   });
+  return res.json();
+}
+
+export interface SimulateRequest {
+  prompt?: string;
+  task_type: string;
+  complexity: string;
+  department: string;
+  risk_level?: string;
+  budget_pct?: number;
+}
+
+export interface SimulateResult {
+  input: { task_type: string; complexity: string; department: string; budget_pct: number };
+  risk: { level: string; rationale: string; direct_commercial_forbidden: boolean; audit_required: boolean };
+  result: { rule_matched: string; primary_model: string; provider: string; model_tier: string; fallback_models: string[]; rationale: string };
+  policy_trace: { rule: string; result: string; reason: string }[];
+  constraints_applied: string[];
+}
+
+export async function simulateRouting(body: SimulateRequest): Promise<SimulateResult> {
+  const res = await fetch(`${API_BASE}/internal/routing/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer rb-dev-key-1" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Simulate failed: ${res.status}`);
   return res.json();
 }
 
