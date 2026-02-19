@@ -1,0 +1,46 @@
+department: general
+version: "1.0"
+description: "Base fallback policy for all departments"
+
+budget_controls:
+  daily_limit_usd_per_user: 5.00
+  daily_limit_usd_per_tenant: 50.00
+  downgrade_at_percent: 80.0
+  force_cheap_at_percent: 100.0
+
+rules:
+  - name: general_simple
+    complexity: simple
+    primary_model: claude-haiku-4-5-20251001
+    provider: anthropic
+    fallback_models:
+      - gpt-4o-mini
+    model_tier: fast_cheap
+    rationale: "Fast and cheap for simple tasks"
+
+  - name: general_medium
+    complexity: medium
+    primary_model: claude-sonnet-4-5-20250929
+    provider: anthropic
+    fallback_models:
+      - gpt-4o
+    model_tier: balanced
+    rationale: "Balanced quality and cost"
+
+  - name: general_complex
+    complexity: complex
+    primary_model: claude-opus-4-5-20251101
+    provider: anthropic
+    fallback_models:
+      - claude-sonnet-4-5-20250929
+    model_tier: powerful
+    rationale: "Maximum capability for complex tasks"
+
+default_rule:
+  name: base_default
+  primary_model: claude-sonnet-4-5-20250929
+  provider: anthropic
+  fallback_models:
+    - gpt-4o
+  model_tier: balanced
+  rationale: "Safe default"

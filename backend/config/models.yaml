@@ -1,0 +1,103 @@
+models:
+  # Anthropic
+  - model_id: claude-haiku-4-5-20251001
+    provider: anthropic
+    tier: fast_cheap
+    input_cost_per_mtok: 0.80
+    output_cost_per_mtok: 4.00
+    context_window: 200000
+    supports_streaming: true
+    supports_tools: true
+
+  - model_id: claude-sonnet-4-5-20250929
+    provider: anthropic
+    tier: balanced
+    input_cost_per_mtok: 3.00
+    output_cost_per_mtok: 15.00
+    context_window: 200000
+    supports_streaming: true
+    supports_tools: true
+
+  - model_id: claude-opus-4-5-20251101
+    provider: anthropic
+    tier: powerful
+    input_cost_per_mtok: 15.00
+    output_cost_per_mtok: 75.00
+    context_window: 200000
+    supports_streaming: true
+    supports_tools: true
+
+  # OpenAI
+  - model_id: gpt-4o-mini
+    provider: openai
+    tier: fast_cheap
+    input_cost_per_mtok: 0.15
+    output_cost_per_mtok: 0.60
+    context_window: 128000
+    supports_streaming: true
+    supports_tools: true
+
+  - model_id: gpt-4o
+    provider: openai
+    tier: balanced
+    input_cost_per_mtok: 2.50
+    output_cost_per_mtok: 10.00
+    context_window: 128000
+    supports_streaming: true
+    supports_tools: true
+
+  - model_id: o1
+    provider: openai
+    tier: powerful
+    input_cost_per_mtok: 15.00
+    output_cost_per_mtok: 60.00
+    context_window: 128000
+    supports_streaming: false
+    supports_tools: false
+
+  # Google Gemini
+  - model_id: gemini-2.0-flash
+    provider: gemini
+    tier: fast_cheap
+    input_cost_per_mtok: 0.10
+    output_cost_per_mtok: 0.40
+    context_window: 1000000
+    supports_streaming: true
+    supports_tools: true
+
+  - model_id: gemini-2.0-pro
+    provider: gemini
+    tier: balanced
+    input_cost_per_mtok: 2.00
+    output_cost_per_mtok: 8.00
+    context_window: 2000000
+    supports_streaming: true
+    supports_tools: true
+
+  # Local OSS (Ollama)
+  - model_id: llama3.1:70b
+    provider: ollama
+    tier: local
+    input_cost_per_mtok: 0.00
+    output_cost_per_mtok: 0.00
+    context_window: 128000
+    supports_streaming: true
+    supports_tools: false
+
+  - model_id: codellama:34b
+    provider: ollama
+    tier: local
+    input_cost_per_mtok: 0.00
+    output_cost_per_mtok: 0.00
+    context_window: 100000
+    supports_streaming: true
+    supports_tools: false
+
+  - model_id: deepseek-coder:33b
+    provider: ollama
+    tier: local
+    input_cost_per_mtok: 0.00
+    output_cost_per_mtok: 0.00
+    context_window: 100000
+    supports_streaming: true
+    supports_tools: false
