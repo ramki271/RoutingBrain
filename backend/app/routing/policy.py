@@ -90,12 +90,15 @@ class PolicyEngine:
         policy = self._policies.get(department) or self._base_policy
 
         if not policy:
-            rule = self._emergency_fallback()
+            rule = self._emergency_fallback(risk)
             trace.append(PolicyTraceEntry(rule="emergency_fallback", result="matched", reason="no policy found"))
             return self._resolve_rule(rule), trace, constraints
 
-        matched_rule, find_trace = self._find_rule_with_trace(policy, classification)
+        matched_rule, find_trace = self._find_rule_with_trace(policy, classification, risk)
         trace.extend(find_trace)
+
+        # Resolve virtual IDs BEFORE risk gate so provider names are concrete
+        matched_rule = self._resolve_rule(matched_rule)
 
         # ── Risk gate (hard — runs before budget) ──────────────────────────
         if risk and risk.risk_level != RiskLevel.LOW:
@@ -137,7 +140,7 @@ class PolicyEngine:
                 ))
                 constraints.append("budget_downgrade")
 
-        return self._resolve_rule(matched_rule), trace, constraints
+        return matched_rule, trace, constraints
 
     def _tier_rank(self, tier: ModelTier) -> int:
         """Higher rank = more powerful. LOCAL is 0, POWERFUL is 3."""
@@ -174,27 +177,36 @@ class PolicyEngine:
                 )
             return current
 
-        # Primary provider is forbidden — find the best allowed rule
-        # Prefer: OSS (free, on-prem) > compliant cloud > skip
+        # Primary provider is forbidden — find the best allowed rule.
+        # OSS (local tier) is ALWAYS a valid candidate regardless of tier floor —
+        # data residency trumps quality tier when commercial APIs are forbidden.
+        from app.routing.risk_analyzer import OSS_PROVIDERS
         min_tier = ModelTier(risk.required_min_tier)
         candidates = [
             r for r in policy.rules
-            if is_provider_allowed(r.provider, risk)
-            and self._tier_rank(ModelTier(r.model_tier)) >= self._tier_rank(min_tier)
+            # Include if: meets quality floor OR is OSS (data residency safe regardless of tier)
+            if self._tier_rank(ModelTier(r.model_tier)) >= self._tier_rank(min_tier)
+            or r.model_tier == ModelTier.LOCAL.value
         ]
 
         if candidates:
-            # Pick cheapest allowed rule that meets quality floor
-            upgraded = min(candidates, key=lambda r: self._tier_rank(ModelTier(r.model_tier)))
-            logger.info(
-                "risk_provider_switch",
-                from_provider=current.provider,
-                to_provider=upgraded.provider,
-                risk_level=risk.risk_level.value,
-            )
-            current = upgraded
+            # Resolve virtual IDs so we can check real provider names
+            resolved_candidates = [self._resolve_rule(r) for r in candidates]
+            allowed_candidates = [
+                r for r in resolved_candidates
+                if is_provider_allowed(r.provider, risk)
+            ]
+            if allowed_candidates:
+                upgraded = min(allowed_candidates, key=lambda r: self._tier_rank(ModelTier(r.model_tier)))
+                logger.info(
+                    "risk_provider_switch",
+                    from_provider=current.provider,
+                    to_provider=upgraded.provider,
+                    risk_level=risk.risk_level.value,
+                )
+                current = upgraded
 
-        # Clean fallback chain of forbidden providers
+        # Clean fallback chain of forbidden providers (fallbacks are already resolved model names)
         clean_fallbacks = [
             m for m in current.fallback_models
             if is_provider_allowed(self._infer_provider(m), risk)
@@ -214,13 +226,15 @@ class PolicyEngine:
         return "openai"
 
     def _find_rule(
-        self, policy: DepartmentPolicy, classification: ClassificationResult
+        self, policy: DepartmentPolicy, classification: ClassificationResult,
+        risk: Optional[RiskAssessment] = None,
     ) -> RoutingRule:
-        rule, _ = self._find_rule_with_trace(policy, classification)
+        rule, _ = self._find_rule_with_trace(policy, classification, risk)
         return rule
 
     def _find_rule_with_trace(
-        self, policy: DepartmentPolicy, classification: ClassificationResult
+        self, policy: DepartmentPolicy, classification: ClassificationResult,
+        risk: Optional[RiskAssessment] = None,
     ) -> Tuple[RoutingRule, List[PolicyTraceEntry]]:
         trace: List[PolicyTraceEntry] = []
         for rule in policy.rules:
@@ -249,7 +263,7 @@ class PolicyEngine:
             ))
             return policy.default_rule, trace
 
-        fallback = self._emergency_fallback()
+        fallback = self._emergency_fallback(risk)
         trace.append(PolicyTraceEntry(rule="emergency_fallback", result="matched", reason="no rules or default"))
         return fallback, trace
 
@@ -274,7 +288,23 @@ class PolicyEngine:
                 return rule
         return fallback
 
-    def _emergency_fallback(self) -> RoutingRule:
+    def _emergency_fallback(self, risk: Optional[RiskAssessment] = None) -> RoutingRule:
+        """
+        Safe fallback of last resort.
+        If risk forbids direct commercial APIs, fall back to OSS (local) instead.
+        Never silently route regulated content to a forbidden provider.
+        """
+        # If direct commercial is forbidden (high/regulated risk), use OSS
+        if risk and risk.direct_commercial_forbidden:
+            return RoutingRule(
+                name="emergency_fallback_oss",
+                primary_model="llama3.1:70b",
+                provider="ollama",
+                fallback_models=[],
+                model_tier=ModelTier.LOCAL.value,
+                rationale="Emergency fallback — OSS only (risk level forbids direct commercial APIs)",
+            )
+        # Default safe fallback — Haiku is cheap and fast
         return RoutingRule(
             name="emergency_fallback",
             primary_model="claude-haiku-4-5-20251001",
@@ -302,6 +332,13 @@ class PolicyEngine:
 
     def get_policy(self, department: str) -> Optional[DepartmentPolicy]:
         return self._policies.get(department)
+
+    def get_policy_version(self, department: str) -> str:
+        """Return versioned identifier for the department's policy, e.g. 'rd-v2.0'."""
+        policy = self._policies.get(department) or self._base_policy
+        if not policy:
+            return "unknown"
+        return f"{policy.department}-v{policy.version}"
 
     def list_departments(self) -> list[str]:
         return list(self._policies.keys())

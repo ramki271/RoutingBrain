@@ -84,6 +84,17 @@ class RoutingDecision(BaseModel):
     virtual_model_id: str = ""     # original rb:// ID before resolution
 
 
+class ClassificationSnapshot(BaseModel):
+    """Persisted snapshot of the classification — used for audit replayability."""
+    task_type: str
+    complexity: str
+    confidence: float
+    classified_by: str
+    department: str
+    required_capability: List[str] = Field(default_factory=list)
+    risk_signals: List[str] = Field(default_factory=list)   # detected signal categories
+
+
 class RoutingOutcome(BaseModel):
     request_id: str
     actual_model_used: str
@@ -91,12 +102,23 @@ class RoutingOutcome(BaseModel):
     pre_analysis: PreAnalysis
     classification: ClassificationResult
     routing_decision: RoutingDecision
+    # Identity (§4.1)
+    tenant_id: str = "unknown"
+    user_id: str = "unknown"
+    # Policy version (§4.4)
+    policy_version: str = "unknown"
+    # Risk
     risk_level: str = "low"
     risk_rationale: str = ""
+    risk_signals: List[str] = Field(default_factory=list)   # signal categories detected
     data_residency_note: str = ""
     audit_required: bool = False
+    # Trace
     policy_trace: List[PolicyTraceEntry] = Field(default_factory=list)
     constraints_applied: List[str] = Field(default_factory=list)
+    # Classification snapshot (§4.5)
+    classification_snapshot: Optional[ClassificationSnapshot] = None
+    # Tokens + cost
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_cost_usd: float = 0.0

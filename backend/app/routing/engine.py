@@ -8,6 +8,7 @@ from app.models.request import ChatCompletionRequest
 from app.models.response import ChatCompletionResponse
 from app.models.routing import (
     ClassificationResult,
+    ClassificationSnapshot,
     PreAnalysis,
     RoutingDecision,
     RoutingOutcome,
@@ -81,6 +82,19 @@ class RoutingEngine:
             classification, risk=risk, budget_pct=budget_pct
         )
 
+        # Governance fields (§4.4, §4.5)
+        policy_version = self.policy_engine.get_policy_version(classification.department.value)
+        risk_signal_categories = [s.category for s in risk.signals]
+        classification_snapshot = ClassificationSnapshot(
+            task_type=classification.task_type.value,
+            complexity=classification.complexity.value,
+            confidence=classification.confidence,
+            classified_by=classification.classified_by.value,
+            department=classification.department.value,
+            required_capability=classification.required_capability,
+            risk_signals=risk_signal_categories,
+        )
+
         routing_decision = RoutingDecision(
             primary_model=rule.primary_model,
             provider=rule.provider,
@@ -141,12 +155,17 @@ class RoutingEngine:
                         pre_analysis=pre_analysis,
                         classification=classification,
                         routing_decision=routing_decision,
+                        tenant_id=request.x_tenant_id or "unknown",
+                        user_id=request.x_user_id or "unknown",
+                        policy_version=policy_version,
                         risk_level=risk.risk_level.value,
                         risk_rationale=risk.rationale,
+                        risk_signals=risk_signal_categories,
                         data_residency_note=risk.data_residency_note,
                         audit_required=risk.audit_required,
                         policy_trace=policy_trace,
                         constraints_applied=constraints_applied,
+                        classification_snapshot=classification_snapshot,
                         latency_ms=latency_ms,
                         fallback_used=fallback_used,
                     )
@@ -162,12 +181,17 @@ class RoutingEngine:
                         pre_analysis=pre_analysis,
                         classification=classification,
                         routing_decision=routing_decision,
+                        tenant_id=request.x_tenant_id or "unknown",
+                        user_id=request.x_user_id or "unknown",
+                        policy_version=policy_version,
                         risk_level=risk.risk_level.value,
                         risk_rationale=risk.rationale,
+                        risk_signals=risk_signal_categories,
                         data_residency_note=risk.data_residency_note,
                         audit_required=risk.audit_required,
                         policy_trace=policy_trace,
                         constraints_applied=constraints_applied,
+                        classification_snapshot=classification_snapshot,
                         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
                         completion_tokens=response.usage.completion_tokens if response.usage else 0,
                         latency_ms=latency_ms,
@@ -186,9 +210,26 @@ class RoutingEngine:
                 )
                 continue
 
-        raise RoutingError(
-            f"All providers failed. Last error: {last_error}"
-        )
+        # Build a meaningful error message explaining WHY all providers failed
+        tried = [m for m, _ in models_to_try]
+        if risk.direct_commercial_forbidden:
+            msg = (
+                f"Governance policy blocked all available providers for this request.\n\n"
+                f"Risk level: {risk.risk_level.value.upper()} — {risk.rationale}\n\n"
+                f"Direct commercial APIs (Anthropic / OpenAI / Gemini) are forbidden for this content. "
+                f"Allowed: self-hosted OSS (Ollama/vLLM) or compliant cloud (AWS Bedrock, Azure AI Foundry with BAA).\n\n"
+                f"Models tried: {', '.join(tried)}\n"
+                f"To fix: start Ollama locally or add AWS Bedrock / Azure AI Foundry credentials."
+            )
+            raise RoutingError(msg, governance_blocked=True)
+        else:
+            msg = (
+                f"All providers failed for this request.\n\n"
+                f"Models tried: {', '.join(tried)}\n"
+                f"Last error: {last_error}\n\n"
+                f"Check that API keys are configured in backend/.env."
+            )
+            raise RoutingError(msg, governance_blocked=False)
 
     def _infer_provider(self, model: str) -> str:
         """Infer provider from model name prefix."""

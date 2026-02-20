@@ -154,6 +154,8 @@ interface Message {
   content: string;
   routing?: RoutingDecision;
   streaming?: boolean;
+  error?: boolean;
+  governanceBlocked?: boolean;
 }
 
 function complexityColor(c: string) {
@@ -164,15 +166,35 @@ function complexityColor(c: string) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const bgColor = message.governanceBlocked
+    ? "var(--amber-dim)"
+    : message.error
+    ? "var(--red-dim)"
+    : isUser
+    ? "var(--accent-dim)"
+    : "var(--bg-2)";
+  const borderColor = message.governanceBlocked
+    ? "var(--amber)"
+    : message.error
+    ? "var(--red)"
+    : isUser
+    ? "var(--accent-border)"
+    : "var(--border)";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 6 }}>
+      {message.governanceBlocked && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--amber)", fontWeight: 600 }}>
+          <span>⚠️</span> Governance policy blocked this request
+        </div>
+      )}
       <div
         style={{
           maxWidth: "85%",
           padding: "10px 14px",
           borderRadius: isUser ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
-          background: isUser ? "var(--accent-dim)" : "var(--bg-2)",
-          border: `1px solid ${isUser ? "var(--accent-border)" : "var(--border)"}`,
+          background: bgColor,
+          border: `1px solid ${borderColor}44`,
           fontSize: 13,
           lineHeight: 1.7,
           color: "var(--text)",
@@ -274,9 +296,14 @@ export default function PlaygroundPage() {
         setStreamingContent("");
       }
     } catch (err: unknown) {
+      const isGovernanceBlocked = (err as any)?.governance_blocked === true;
+      const errMessage = err instanceof Error ? err.message : "Request failed";
+      const content = isGovernanceBlocked
+        ? errMessage  // backend already formats a clear governance message
+        : `All providers failed for this request.\n\n${errMessage}\n\nCheck that API keys are configured in backend/.env and the provider is online.`;
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: "assistant", content: `Error: ${err instanceof Error ? err.message : "Request failed"}` },
+        { id: (Date.now() + 1).toString(), role: "assistant", content, error: true, governanceBlocked: isGovernanceBlocked },
       ]);
       setStreamingContent("");
     } finally {

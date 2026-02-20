@@ -1,12 +1,14 @@
+import asyncio
 import orjson
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.core.logging import get_logger
 from app.models.request import ChatCompletionRequest
 from app.models.routing import RoutingOutcome
+from app.observability.audit_log import AuditLogger
 from app.routing.engine import RoutingEngine
 
 logger = get_logger(__name__)
@@ -17,28 +19,45 @@ def get_routing_engine(request: Request) -> RoutingEngine:
     return request.app.state.routing_engine
 
 
+def get_audit_logger(request: Request) -> AuditLogger:
+    return request.app.state.audit_logger
+
+
 def _routing_decision_payload(outcome: RoutingOutcome) -> dict:
-    return {
+    payload = {
+        # Identity (§4.1)
         "request_id": outcome.request_id,
+        "tenant_id": outcome.tenant_id,
+        "user_id": outcome.user_id,
+        "department": outcome.classification.department.value,
+        # Policy version (§4.4)
+        "policy_version": outcome.policy_version,
+        # Classification
         "task_type": outcome.classification.task_type.value,
         "complexity": outcome.classification.complexity.value,
-        "department": outcome.classification.department.value,
         "confidence": outcome.classification.confidence,
         "classified_by": outcome.classification.classified_by.value,
         "routing_rationale": outcome.classification.routing_rationale,
+        # Routing decision
         "model_selected": outcome.actual_model_used,
         "provider": outcome.actual_provider,
         "model_tier": outcome.routing_decision.model_tier,
         "rule_matched": outcome.routing_decision.rule_matched,
         "fallback_used": outcome.fallback_used,
         "latency_ms": outcome.latency_ms,
+        # Risk
         "risk_level": outcome.risk_level,
         "risk_rationale": outcome.risk_rationale,
         "data_residency_note": outcome.data_residency_note,
         "audit_required": outcome.audit_required,
+        # Trace
         "policy_trace": [{"rule": t.rule, "result": t.result, "reason": t.reason} for t in outcome.policy_trace],
         "constraints_applied": outcome.constraints_applied,
+        # Classification snapshot (§4.5)
+        "classification_snapshot": outcome.classification_snapshot.model_dump()
+            if outcome.classification_snapshot else None,
     }
+    return payload
 
 
 async def _prepend_routing_event(
@@ -55,7 +74,9 @@ async def _prepend_routing_event(
 async def chat_completions(
     body: ChatCompletionRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     engine: RoutingEngine = Depends(get_routing_engine),
+    audit: AuditLogger = Depends(get_audit_logger),
 ):
     # Inject request context from middleware state
     body.x_request_id = getattr(request.state, "request_id", None)
@@ -64,6 +85,15 @@ async def chat_completions(
     body.x_department = body.x_department or getattr(request.state, "department", "rd")
 
     response_or_gen, outcome = await engine.route(body)
+
+    # Audit log — always fires, even on provider failure, as a background task
+    audit_record = audit.build_record(
+        outcome,
+        tenant_id=outcome.tenant_id,
+        user_id=outcome.user_id,
+        policy_version=outcome.policy_version,
+    )
+    background_tasks.add_task(audit.log, audit_record)
 
     if body.stream:
         return StreamingResponse(

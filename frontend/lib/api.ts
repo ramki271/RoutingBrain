@@ -55,7 +55,12 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `HTTP ${response.status}`);
+    const errObj = err?.error || {};
+    // Attach governance_blocked flag so the UI can show a specific message
+    const error = new Error(errObj.message || `HTTP ${response.status}`);
+    (error as any).governance_blocked = errObj.governance_blocked ?? false;
+    (error as any).error_code = errObj.code ?? "";
+    throw error;
   }
 
   if (!stream) {
@@ -210,6 +215,64 @@ export async function simulateRouting(body: SimulateRequest): Promise<SimulateRe
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Simulate failed: ${res.status}`);
+  return res.json();
+}
+
+export interface AuditEntry {
+  request_id: string;
+  timestamp: string;
+  tenant_id: string;
+  department: string;
+  user_id: string;
+  policy_version: string;
+  rule_matched: string;
+  risk_level: string;
+  risk_rationale: string;
+  audit_required: boolean;
+  model_selected: string;
+  provider: string;
+  model_tier: string;
+  fallback_used: boolean;
+  latency_ms: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  estimated_cost_usd: number;
+  data_residency_note: string;
+  constraints_applied: string[];
+  policy_trace: { rule: string; result: string; reason: string }[];
+  classification_snapshot: {
+    task_type: string;
+    complexity: string;
+    confidence: number;
+    classified_by: string;
+    department: string;
+    risk_signals: string[];
+  } | null;
+  error: string | null;
+}
+
+export interface AuditLogsResponse {
+  entries: AuditEntry[];
+  total: number;
+  filtered: number;
+  log_path: string;
+}
+
+export async function fetchAuditLogs(params?: {
+  limit?: number;
+  risk_level?: string;
+  department?: string;
+  audit_required?: boolean;
+}): Promise<AuditLogsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.risk_level) qs.set("risk_level", params.risk_level);
+  if (params?.department) qs.set("department", params.department);
+  if (params?.audit_required !== undefined) qs.set("audit_required", String(params.audit_required));
+  const res = await fetch(`${API_BASE}/internal/audit/logs?${qs}`, {
+    headers: { Authorization: "Bearer rb-dev-key-1" },
+  });
+  if (!res.ok) throw new Error(`Audit log fetch failed: ${res.status}`);
   return res.json();
 }
 

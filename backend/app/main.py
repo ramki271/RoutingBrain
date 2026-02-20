@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.internal import health, routing as routing_admin
+from app.api.internal import audit as audit_admin, health, routing as routing_admin
 from app.api.v1 import chat, models
 from app.core.config import get_settings
 from app.core.exceptions import RoutingBrainError, routing_brain_exception_handler
@@ -11,6 +11,7 @@ from app.core.logging import configure_logging, get_logger
 from app.middleware.auth import AuthMiddleware
 from app.middleware.request_id import RequestIdMiddleware
 from app.providers.registry import ProviderRegistry
+from app.observability.audit_log import AuditLogger
 from app.routing.engine import RoutingEngine
 from app.routing.policy import PolicyEngine
 from app.routing.routing_brain import RoutingBrain
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     policy_engine = PolicyEngine(settings.routing_policies_dir, virtual_registry=virtual_registry)
     routing_brain = RoutingBrain(settings)
     routing_engine = RoutingEngine(routing_brain, policy_engine, provider_registry)
+    audit_logger = AuditLogger(log_path="logs/audit.jsonl")
 
     # Store on app state for dependency injection
     app.state.settings = settings
@@ -40,6 +42,7 @@ async def lifespan(app: FastAPI):
     app.state.policy_engine = policy_engine
     app.state.routing_brain = routing_brain
     app.state.routing_engine = routing_engine
+    app.state.audit_logger = audit_logger
 
     logger.info(
         "components_ready",
@@ -96,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(health.router, prefix="/internal")
     app.include_router(routing_admin.router, prefix="/internal")
+    app.include_router(audit_admin.router, prefix="/internal")
 
     return app
 

@@ -165,7 +165,7 @@ rules:
     task_type: data_analysis
     complexity: simple
     primary_model: rb://fast_cheap_qa
-    fallback_models: [rb://fast_cheap_review]
+    fallback_models: [rb://fast_cheap_review, rb://local_general]
     model_tier: fast_cheap
     rationale: "Large context, low cost"
 
@@ -173,7 +173,7 @@ rules:
     task_type: data_analysis
     complexity: complex
     primary_model: rb://balanced_data
-    fallback_models: [rb://powerful_reasoning]
+    fallback_models: [rb://powerful_reasoning, rb://local_general]
     model_tier: balanced
     rationale: "2M context for large codebases and logs"
 

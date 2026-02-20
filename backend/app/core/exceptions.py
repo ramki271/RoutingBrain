@@ -33,8 +33,12 @@ class ProviderError(RoutingBrainError):
 
 
 class RoutingError(RoutingBrainError):
-    status_code = 500
+    status_code = 451   # 451 = Unavailable For Legal Reasons — appropriate for governance blocks
     error_code = "routing_error"
+
+    def __init__(self, message: str, governance_blocked: bool = False):
+        self.governance_blocked = governance_blocked
+        super().__init__(message)
 
 
 class PolicyNotFoundError(RoutingBrainError):
@@ -50,13 +54,13 @@ class BudgetExceededError(RoutingBrainError):
 async def routing_brain_exception_handler(
     request: Request, exc: RoutingBrainError
 ) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": {
-                "code": exc.error_code,
-                "message": exc.message,
-                "type": type(exc).__name__,
-            }
-        },
-    )
+    content = {
+        "error": {
+            "code": exc.error_code,
+            "message": exc.message,
+            "type": type(exc).__name__,
+        }
+    }
+    if isinstance(exc, RoutingError):
+        content["error"]["governance_blocked"] = exc.governance_blocked
+    return JSONResponse(status_code=exc.status_code, content=content)
