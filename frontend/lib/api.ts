@@ -1,5 +1,10 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+type RoutingApiError = Error & {
+  governance_blocked?: boolean;
+  error_code?: string;
+};
+
 export interface RoutingDecision {
   request_id: string;
   task_type: string;
@@ -57,9 +62,9 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
     const err = await response.json().catch(() => ({}));
     const errObj = err?.error || {};
     // Attach governance_blocked flag so the UI can show a specific message
-    const error = new Error(errObj.message || `HTTP ${response.status}`);
-    (error as any).governance_blocked = errObj.governance_blocked ?? false;
-    (error as any).error_code = errObj.code ?? "";
+    const error: RoutingApiError = new Error(errObj.message || `HTTP ${response.status}`);
+    error.governance_blocked = errObj.governance_blocked ?? false;
+    error.error_code = errObj.code ?? "";
     throw error;
   }
 
@@ -193,6 +198,7 @@ export async function fetchPolicies() {
 
 export interface SimulateRequest {
   prompt?: string;
+  tenant_id?: string;
   task_type: string;
   complexity: string;
   department: string;
@@ -201,7 +207,7 @@ export interface SimulateRequest {
 }
 
 export interface SimulateResult {
-  input: { task_type: string; complexity: string; department: string; budget_pct: number };
+  input: { tenant_id: string; task_type: string; complexity: string; department: string; budget_pct: number };
   risk: { level: string; rationale: string; direct_commercial_forbidden: boolean; audit_required: boolean };
   result: { rule_matched: string; primary_model: string; provider: string; model_tier: string; fallback_models: string[]; rationale: string };
   policy_trace: { rule: string; result: string; reason: string }[];

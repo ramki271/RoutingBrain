@@ -79,11 +79,17 @@ class RoutingEngine:
         # TODO: pass actual budget_pct from Redis in Phase 3
         budget_pct = 0.0
         rule, policy_trace, constraints_applied = self.policy_engine.match(
-            classification, risk=risk, budget_pct=budget_pct
+            classification,
+            risk=risk,
+            budget_pct=budget_pct,
+            tenant_id=request.x_tenant_id,
         )
 
         # Governance fields (§4.4, §4.5)
-        policy_version = self.policy_engine.get_policy_version(classification.department.value)
+        policy_version = self.policy_engine.get_policy_version(
+            classification.department.value,
+            tenant_id=request.x_tenant_id,
+        )
         risk_signal_categories = [s.category for s in risk.signals]
         classification_snapshot = ClassificationSnapshot(
             task_type=classification.task_type.value,

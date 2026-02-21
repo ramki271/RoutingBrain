@@ -18,6 +18,7 @@ class PolicyEngine:
     def __init__(self, policies_dir: str, virtual_registry: Optional[VirtualModelRegistry] = None):
         self.policies_dir = Path(policies_dir)
         self._policies: Dict[str, DepartmentPolicy] = {}
+        self._tenant_policies: Dict[Tuple[str, str], DepartmentPolicy] = {}
         self._base_policy: Optional[DepartmentPolicy] = None
         self._virtual = virtual_registry
         self.load_all()
@@ -49,6 +50,7 @@ class PolicyEngine:
             default_rule = RoutingRule(**data["default_rule"])
 
         policy = DepartmentPolicy(
+            tenant_id=data.get("tenant_id"),
             department=data["department"],
             version=data.get("version", "1.0"),
             description=data.get("description", ""),
@@ -57,15 +59,25 @@ class PolicyEngine:
             default_rule=default_rule,
         )
 
-        self._policies[policy.department] = policy
-        if path.stem == "base":
+        if policy.tenant_id:
+            self._tenant_policies[(policy.tenant_id, policy.department)] = policy
+        else:
+            self._policies[policy.department] = policy
+
+        if path.stem == "base" and not policy.tenant_id:
             self._base_policy = policy
 
-        logger.info("policy_loaded", department=policy.department, rules=len(rules))
+        logger.info(
+            "policy_loaded",
+            tenant_id=policy.tenant_id or "global",
+            department=policy.department,
+            rules=len(rules),
+        )
 
     def reload(self) -> None:
         """Hot-reload all policies without restart."""
         self._policies.clear()
+        self._tenant_policies.clear()
         self._base_policy = None
         self.load_all()
         logger.info("policies_reloaded")
@@ -75,6 +87,7 @@ class PolicyEngine:
         classification: ClassificationResult,
         risk: Optional[RiskAssessment] = None,
         budget_pct: float = 0.0,
+        tenant_id: Optional[str] = None,
     ) -> Tuple[RoutingRule, List[PolicyTraceEntry], List[str]]:
         """
         Find the best matching rule for a classification.
@@ -87,12 +100,21 @@ class PolicyEngine:
         constraints: List[str] = []
 
         department = classification.department.value
-        policy = self._policies.get(department) or self._base_policy
+        policy = self.get_policy(department, tenant_id=tenant_id) or self._base_policy
 
         if not policy:
             rule = self._emergency_fallback(risk)
             trace.append(PolicyTraceEntry(rule="emergency_fallback", result="matched", reason="no policy found"))
             return self._resolve_rule(rule), trace, constraints
+
+        if tenant_id and policy.tenant_id == tenant_id:
+            trace.append(
+                PolicyTraceEntry(
+                    rule="tenant_policy_select",
+                    result="matched",
+                    reason=f"tenant='{tenant_id}' department='{department}'",
+                )
+            )
 
         matched_rule, find_trace = self._find_rule_with_trace(policy, classification, risk)
         trace.extend(find_trace)
@@ -118,8 +140,29 @@ class PolicyEngine:
                     reason=f"provider allowed for {risk.risk_level.value} risk",
                 ))
 
-        # ── Budget guardrails ───────────────────────────────────────────────
         risk_floor = ModelTier(risk.required_min_tier) if risk else ModelTier.FAST_CHEAP
+
+        # ── Static budget cap (MVP): max allowed tier from policy ──────────
+        max_tier_value = policy.budget_controls.max_tier
+        if max_tier_value:
+            try:
+                max_tier = ModelTier(max_tier_value)
+                current_tier = ModelTier(matched_rule.model_tier)
+                if self._tier_rank(current_tier) > self._tier_rank(max_tier):
+                    capped = self._downgrade_to_tier(policy, max_tier, matched_rule)
+                    # Never violate risk floor while capping for budget
+                    if self._tier_rank(ModelTier(capped.model_tier)) >= self._tier_rank(risk_floor):
+                        matched_rule = capped
+                        trace.append(PolicyTraceEntry(
+                            rule="budget_guard_max_tier",
+                            result="budget_override",
+                            reason=f"static max_tier '{max_tier.value}' enforced",
+                        ))
+                        constraints.append(f"budget_max_tier_{max_tier.value}")
+            except ValueError:
+                logger.warning("invalid_budget_max_tier", max_tier=max_tier_value, department=policy.department)
+
+        # ── Budget guardrails ───────────────────────────────────────────────
         if budget_pct >= policy.budget_controls.force_cheap_at_percent:
             if self._tier_rank(ModelTier.FAST_CHEAP) >= self._tier_rank(risk_floor):
                 matched_rule = self._downgrade_to_tier(policy, ModelTier.FAST_CHEAP, matched_rule)
@@ -330,15 +373,23 @@ class PolicyEngine:
             "rationale": rule.rationale,
         })
 
-    def get_policy(self, department: str) -> Optional[DepartmentPolicy]:
+    def get_policy(self, department: str, tenant_id: Optional[str] = None) -> Optional[DepartmentPolicy]:
+        if tenant_id:
+            scoped = self._tenant_policies.get((tenant_id, department))
+            if scoped:
+                return scoped
         return self._policies.get(department)
 
-    def get_policy_version(self, department: str) -> str:
+    def get_policy_version(self, department: str, tenant_id: Optional[str] = None) -> str:
         """Return versioned identifier for the department's policy, e.g. 'rd-v2.0'."""
-        policy = self._policies.get(department) or self._base_policy
+        policy = self.get_policy(department, tenant_id=tenant_id) or self._base_policy
         if not policy:
             return "unknown"
+        if policy.tenant_id:
+            return f"{policy.tenant_id}:{policy.department}-v{policy.version}"
         return f"{policy.department}-v{policy.version}"
 
     def list_departments(self) -> list[str]:
-        return list(self._policies.keys())
+        departments = set(self._policies.keys())
+        departments.update(dept for (_, dept) in self._tenant_policies.keys())
+        return sorted(departments)

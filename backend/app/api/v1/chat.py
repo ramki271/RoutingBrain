@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.core.exceptions import RoutingBrainError
 from app.core.logging import get_logger
 from app.models.request import ChatCompletionRequest
 from app.models.routing import RoutingOutcome
@@ -84,7 +85,21 @@ async def chat_completions(
     body.x_tenant_id = getattr(request.state, "tenant_id", None)
     body.x_department = body.x_department or getattr(request.state, "department", "rd")
 
-    response_or_gen, outcome = await engine.route(body)
+    try:
+        response_or_gen, outcome = await engine.route(body)
+    except RoutingBrainError as exc:
+        # Ensure failures are still audit-logged even when no RoutingOutcome is produced.
+        failure_record = audit.build_failure_record(
+            request_id=body.x_request_id or "unknown",
+            tenant_id=body.x_tenant_id,
+            user_id=body.x_user_id,
+            department=body.x_department,
+            error_code=exc.error_code,
+            error_message=exc.message,
+            governance_blocked=getattr(exc, "governance_blocked", False),
+        )
+        await audit.log(failure_record)
+        raise
 
     # Audit log — always fires, even on provider failure, as a background task
     audit_record = audit.build_record(

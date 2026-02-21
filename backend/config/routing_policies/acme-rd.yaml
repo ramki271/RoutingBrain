@@ -1,0 +1,27 @@
+tenant_id: acme
+department: rd
+version: "1.0"
+description: "ACME tenant R&D policy (sample)"
+
+budget_controls:
+  daily_limit_usd_per_user: 8.00
+  daily_limit_usd_per_tenant: 80.00
+  max_tier: balanced
+  downgrade_at_percent: 80.0
+  force_cheap_at_percent: 100.0
+
+rules:
+  - name: acme_code_gen_simple_local
+    task_type: code_generation
+    complexity: simple
+    primary_model: rb://local_code
+    fallback_models: [rb://fast_cheap_code]
+    model_tier: local
+    rationale: "ACME prefers local OSS for simple code generation"
+
+default_rule:
+  name: acme_rd_default
+  primary_model: rb://balanced_code
+  fallback_models: [rb://fast_cheap_code]
+  model_tier: balanced
+  rationale: "ACME default"

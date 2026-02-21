@@ -18,11 +18,13 @@ class RoutingRule(BaseModel):
 class BudgetControls(BaseModel):
     daily_limit_usd_per_user: Optional[float] = None
     daily_limit_usd_per_tenant: Optional[float] = None
+    max_tier: Optional[str] = None  # Static cap, e.g. "balanced" for MVP budget control
     downgrade_at_percent: float = 80.0   # Downgrade tier when >80% budget used
     force_cheap_at_percent: float = 100.0  # Force fast_cheap when >100%
 
 
 class DepartmentPolicy(BaseModel):
+    tenant_id: Optional[str] = None  # Optional tenant scope; None means global policy
     department: str
     version: str = "1.0"
     description: str = ""

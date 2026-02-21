@@ -1,0 +1,27 @@
+tenant_id: beta
+department: rd
+version: "1.0"
+description: "BETA tenant R&D policy (sample)"
+
+budget_controls:
+  daily_limit_usd_per_user: 15.00
+  daily_limit_usd_per_tenant: 150.00
+  max_tier: powerful
+  downgrade_at_percent: 80.0
+  force_cheap_at_percent: 100.0
+
+rules:
+  - name: beta_code_gen_simple_powerful
+    task_type: code_generation
+    complexity: simple
+    primary_model: rb://powerful_code
+    fallback_models: [rb://balanced_code]
+    model_tier: powerful
+    rationale: "BETA prioritizes high-quality output even for simple code generation"
+
+default_rule:
+  name: beta_rd_default
+  primary_model: rb://balanced_code
+  fallback_models: [rb://fast_cheap_code]
+  model_tier: balanced
+  rationale: "BETA default"

@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { isValidElement, ReactNode, useState, useRef, useEffect } from "react";
 import { sendMessage, RoutingDecision, ChatMessage } from "@/lib/api";
 import { RoutingPanel } from "@/components/routing-panel";
 import { Send, Square, RotateCcw, ChevronDown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github-dark.css";
 
 const DEPARTMENTS = ["rd", "sales", "marketing", "hr", "finance", "general"];
 
@@ -158,10 +162,111 @@ interface Message {
   governanceBlocked?: boolean;
 }
 
+type RoutingApiError = Error & {
+  governance_blocked?: boolean;
+};
+
 function complexityColor(c: string) {
   if (c === "simple") return "var(--green)";
   if (c === "complex") return "var(--amber)";
   return "var(--accent)";
+}
+
+function flattenText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(flattenText).join("");
+  if (isValidElement(node)) return flattenText(node.props.children);
+  return "";
+}
+
+function MarkdownCode({
+  className,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"code"> & { className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const codeText = flattenText(children).replace(/\n$/, "");
+  const languageMatch = className?.match(/language-([\w-]+)/);
+  const language = languageMatch?.[1];
+  const isBlock = Boolean(language) || codeText.includes("\n");
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(codeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  if (!isBlock) {
+    return (
+      <code
+        {...props}
+        className={className}
+        style={{
+          fontFamily: "var(--font-geist-mono)",
+          background: "var(--bg-3)",
+          border: "1px solid var(--border-2)",
+          borderRadius: 4,
+          padding: "1px 5px",
+          fontSize: "0.92em",
+        }}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <div style={{ margin: "10px 0", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", background: "#0f0f0f" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderBottom: "1px solid var(--border)", background: "var(--bg-3)" }}>
+        <span style={{ fontSize: 11, color: "var(--text-2)", fontFamily: "var(--font-geist-mono)" }}>{language || "code"}</span>
+        <button
+          onClick={onCopy}
+          style={{
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-2)",
+            color: copied ? "var(--green)" : "var(--text-2)",
+            borderRadius: 5,
+            fontSize: 11,
+            padding: "2px 8px",
+            cursor: "pointer",
+            fontFamily: "var(--font-geist-mono)",
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre style={{ margin: 0, padding: "10px 12px", overflowX: "auto", fontSize: 12, lineHeight: 1.6 }}>
+        <code {...props} className={className} style={{ fontFamily: "var(--font-geist-mono)" }}>
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+}
+
+function AssistantFormattedContent({ content }: { content: string }) {
+  return (
+    <div className="assistant-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={{
+          code: MarkdownCode,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function MessageBubble({ message }: { message: Message }) {
@@ -198,11 +303,14 @@ function MessageBubble({ message }: { message: Message }) {
           fontSize: 13,
           lineHeight: 1.7,
           color: "var(--text)",
-          whiteSpace: "pre-wrap",
           wordBreak: "break-word",
         }}
       >
-        {message.content}
+        {isUser ? (
+          <span style={{ whiteSpace: "pre-wrap" }}>{message.content}</span>
+        ) : (
+          <AssistantFormattedContent content={message.content} />
+        )}
         {message.streaming && (
           <span
             style={{
@@ -296,7 +404,8 @@ export default function PlaygroundPage() {
         setStreamingContent("");
       }
     } catch (err: unknown) {
-      const isGovernanceBlocked = (err as any)?.governance_blocked === true;
+      const routingErr = err as RoutingApiError;
+      const isGovernanceBlocked = routingErr?.governance_blocked === true;
       const errMessage = err instanceof Error ? err.message : "Request failed";
       const content = isGovernanceBlocked
         ? errMessage  // backend already formats a clear governance message

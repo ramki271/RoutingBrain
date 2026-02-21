@@ -1,6 +1,7 @@
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +21,9 @@ class Settings(BaseSettings):
 
     # Auth
     valid_api_keys: str = "rb-dev-key-1"
+    # Optional JSON map:
+    # {"rb-key-1":{"tenant_id":"acme","department":"rd","allowed_departments":["rd","finance"]}}
+    api_key_metadata: str = ""
 
     # Provider keys
     anthropic_api_key: str = ""
@@ -45,7 +49,21 @@ class Settings(BaseSettings):
 
     @property
     def api_keys_list(self) -> List[str]:
-        return [k.strip() for k in self.valid_api_keys.split(",") if k.strip()]
+        keys = {k.strip() for k in self.valid_api_keys.split(",") if k.strip()}
+        keys.update(self.api_key_metadata_map.keys())
+        return sorted(keys)
+
+    @property
+    def api_key_metadata_map(self) -> Dict[str, Dict[str, Any]]:
+        if not self.api_key_metadata.strip():
+            return {}
+        try:
+            parsed = json.loads(self.api_key_metadata)
+            if isinstance(parsed, dict):
+                return {str(k): v for k, v in parsed.items() if isinstance(v, dict)}
+            return {}
+        except Exception:
+            return {}
 
     @property
     def is_development(self) -> bool:

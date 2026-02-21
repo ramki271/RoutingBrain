@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         AuthMiddleware,
         valid_api_keys=settings.api_keys_list,
+        api_key_metadata=settings.api_key_metadata_map,
         dev_mode=settings.is_development,
     )
 

@@ -13,6 +13,7 @@ class SimulateRequest(BaseModel):
     task_type: str = "general"
     complexity: str = "medium"
     department: str = "rd"
+    tenant_id: str = "default"
     risk_level: Optional[str] = None   # override auto-detection if provided
     budget_pct: float = 0.0
 
@@ -34,6 +35,7 @@ async def list_policies(request: Request):
         policy = policy_engine.get_policy(dept)
         if policy:
             result[dept] = {
+                "tenant_id": policy.tenant_id,
                 "department": policy.department,
                 "version": policy.version,
                 "description": policy.description,
@@ -53,6 +55,31 @@ async def list_policies(request: Request):
                     for r in policy.rules
                 ],
             }
+
+    # Include tenant-scoped policies explicitly for governance inspection.
+    tenant_policies = getattr(policy_engine, "_tenant_policies", {})
+    for (tenant_id, dept), policy in tenant_policies.items():
+        key = f"{tenant_id}:{dept}"
+        result[key] = {
+            "tenant_id": policy.tenant_id,
+            "department": policy.department,
+            "version": policy.version,
+            "description": policy.description,
+            "rule_count": len(policy.rules),
+            "rules": [
+                {
+                    "name": r.name,
+                    "task_type": r.task_type,
+                    "complexity": r.complexity,
+                    "virtual_model": r.primary_model if virtual and virtual.is_virtual(r.primary_model) else None,
+                    "primary_model": virtual.resolve(r.primary_model)[0] if virtual and virtual.is_virtual(r.primary_model) else r.primary_model,
+                    "provider": virtual.resolve(r.primary_model)[1] if virtual and virtual.is_virtual(r.primary_model) else r.provider,
+                    "model_tier": r.model_tier,
+                    "rationale": r.rationale,
+                }
+                for r in policy.rules
+            ],
+        }
     return result
 
 
@@ -118,11 +145,15 @@ async def simulate_routing(body: SimulateRequest, request: Request):
 
     # Run the policy engine (no LLM call)
     rule, trace, constraints = policy_engine.match(
-        classification, risk=risk, budget_pct=body.budget_pct
+        classification,
+        risk=risk,
+        budget_pct=body.budget_pct,
+        tenant_id=body.tenant_id,
     )
 
     return {
         "input": {
+            "tenant_id": body.tenant_id,
             "task_type": task_type.value,
             "complexity": complexity.value,
             "department": department.value,
