@@ -65,7 +65,7 @@ class AuditLogger:
                    if hasattr(outcome.routing_decision.model_tier, 'value')
                    else outcome.routing_decision.model_tier)
         cost_per_mtok = TIER_COST_ESTIMATE.get(tier, 0.003)
-        estimated_cost_usd = round(
+        estimated_cost_usd = outcome.total_cost_usd or round(
             (outcome.prompt_tokens + outcome.completion_tokens) / 1_000_000 * cost_per_mtok,
             6,
         )

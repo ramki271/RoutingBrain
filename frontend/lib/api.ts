@@ -33,6 +33,8 @@ export interface ChatMessage {
 export interface SendMessageOptions {
   messages: ChatMessage[];
   department?: string;
+  tenantId?: string;
+  userId?: string;
   stream?: boolean;
   onToken?: (token: string) => void;
   onRoutingDecision?: (decision: RoutingDecision) => void;
@@ -42,7 +44,7 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
   content: string;
   routing: RoutingDecision | null;
 }> {
-  const { messages, department = "rd", stream = true, onToken, onRoutingDecision } = opts;
+  const { messages, department = "rd", tenantId, userId, stream = true, onToken, onRoutingDecision } = opts;
 
   const response = await fetch(`${API_BASE}/v1/chat/completions`, {
     method: "POST",
@@ -50,6 +52,8 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
       "Content-Type": "application/json",
       Authorization: "Bearer rb-dev-key-1",
       "X-Department": department,
+      ...(tenantId ? { "X-Tenant-Id": tenantId } : {}),
+      ...(userId ? { "X-User-Id": userId } : {}),
     },
     body: JSON.stringify({
       model: "auto",
@@ -286,5 +290,42 @@ export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`, {
     headers: { Authorization: "Bearer rb-dev-key-1" },
   });
+  return res.json();
+}
+
+export interface BudgetStatusRequest {
+  tenant_id: string;
+  user_id: string;
+  department: string;
+}
+
+export interface BudgetStatusResponse {
+  tenant_id: string;
+  user_id: string;
+  department: string;
+  policy_found: boolean;
+  policy_version?: string;
+  budget_pct: number;
+  limits: {
+    daily_limit_usd_per_tenant?: number;
+    daily_limit_usd_per_user?: number;
+    max_tier?: string;
+    downgrade_at_percent?: number;
+    force_cheap_at_percent?: number;
+  };
+  spend: {
+    tenant_spend_usd: number;
+    user_spend_usd: number;
+    date_key?: string;
+  };
+}
+
+export async function fetchBudgetStatus(body: BudgetStatusRequest): Promise<BudgetStatusResponse> {
+  const res = await fetch(`${API_BASE}/internal/routing/budget/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer rb-dev-key-1" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Budget status failed: ${res.status}`);
   return res.json();
 }

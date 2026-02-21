@@ -380,9 +380,13 @@ class PolicyEngine:
                 return scoped
         return self._policies.get(department)
 
+    def resolve_policy(self, department: str, tenant_id: Optional[str] = None) -> Optional[DepartmentPolicy]:
+        """Return tenant-scoped policy if present, else global department policy, else base policy."""
+        return self.get_policy(department, tenant_id=tenant_id) or self._base_policy
+
     def get_policy_version(self, department: str, tenant_id: Optional[str] = None) -> str:
         """Return versioned identifier for the department's policy, e.g. 'rd-v2.0'."""
-        policy = self.get_policy(department, tenant_id=tenant_id) or self._base_policy
+        policy = self.resolve_policy(department, tenant_id=tenant_id)
         if not policy:
             return "unknown"
         if policy.tenant_id:

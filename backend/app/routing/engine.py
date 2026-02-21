@@ -18,6 +18,7 @@ from app.routing import analyzer
 from app.routing.policy import PolicyEngine
 from app.routing.risk_analyzer import RiskAssessment, assess as assess_risk
 from app.routing.routing_brain import RoutingBrain
+from app.storage.budget_tracker import BudgetTracker
 
 logger = get_logger(__name__)
 
@@ -32,10 +33,12 @@ class RoutingEngine:
         routing_brain: RoutingBrain,
         policy_engine: PolicyEngine,
         provider_registry: ProviderRegistry,
+        budget_tracker: BudgetTracker,
     ):
         self.routing_brain = routing_brain
         self.policy_engine = policy_engine
         self.provider_registry = provider_registry
+        self.budget_tracker = budget_tracker
 
     async def route(
         self, request: ChatCompletionRequest
@@ -76,8 +79,19 @@ class RoutingEngine:
         )
 
         # Step 4 — PolicyEngine (risk floor + YAML rule matching + budget guardrails)
-        # TODO: pass actual budget_pct from Redis in Phase 3
+        # Live budget usage from Redis (tenant/user/day).
+        selected_policy = self.policy_engine.resolve_policy(
+            classification.department.value,
+            tenant_id=request.x_tenant_id,
+        )
         budget_pct = 0.0
+        if selected_policy:
+            budget_pct = await self.budget_tracker.get_budget_pct(
+                tenant_id=request.x_tenant_id or "unknown",
+                user_id=request.x_user_id or "unknown",
+                controls=selected_policy.budget_controls,
+            )
+
         rule, policy_trace, constraints_applied = self.policy_engine.match(
             classification,
             risk=risk,
@@ -154,6 +168,17 @@ class RoutingEngine:
                 if request.stream:
                     stream_gen = provider.chat_completion_stream(request, model)
                     latency_ms = int(time.time() * 1000) - start_ms
+                    estimated_cost = self.budget_tracker.estimate_cost_usd(
+                        model_id=actual_model,
+                        prompt_tokens=pre_analysis.estimated_tokens,
+                        completion_tokens=0,
+                        tier=routing_decision.model_tier.value,
+                    )
+                    await self.budget_tracker.record_spend(
+                        tenant_id=request.x_tenant_id or "unknown",
+                        user_id=request.x_user_id or "unknown",
+                        amount_usd=estimated_cost,
+                    )
                     outcome = RoutingOutcome(
                         request_id=request_id,
                         actual_model_used=actual_model,
@@ -172,6 +197,7 @@ class RoutingEngine:
                         policy_trace=policy_trace,
                         constraints_applied=constraints_applied,
                         classification_snapshot=classification_snapshot,
+                        total_cost_usd=estimated_cost,
                         latency_ms=latency_ms,
                         fallback_used=fallback_used,
                     )
@@ -180,6 +206,19 @@ class RoutingEngine:
                 else:
                     response = await provider.chat_completion(request, model)
                     latency_ms = int(time.time() * 1000) - start_ms
+                    prompt_tokens = response.usage.prompt_tokens if response.usage else pre_analysis.estimated_tokens
+                    completion_tokens = response.usage.completion_tokens if response.usage else 0
+                    estimated_cost = self.budget_tracker.estimate_cost_usd(
+                        model_id=actual_model,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        tier=routing_decision.model_tier.value,
+                    )
+                    await self.budget_tracker.record_spend(
+                        tenant_id=request.x_tenant_id or "unknown",
+                        user_id=request.x_user_id or "unknown",
+                        amount_usd=estimated_cost,
+                    )
                     outcome = RoutingOutcome(
                         request_id=request_id,
                         actual_model_used=actual_model,
@@ -198,8 +237,9 @@ class RoutingEngine:
                         policy_trace=policy_trace,
                         constraints_applied=constraints_applied,
                         classification_snapshot=classification_snapshot,
-                        prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-                        completion_tokens=response.usage.completion_tokens if response.usage else 0,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_cost_usd=estimated_cost,
                         latency_ms=latency_ms,
                         fallback_used=fallback_used,
                     )

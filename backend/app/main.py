@@ -16,6 +16,7 @@ from app.routing.engine import RoutingEngine
 from app.routing.policy import PolicyEngine
 from app.routing.routing_brain import RoutingBrain
 from app.routing.virtual_models import VirtualModelRegistry
+from app.storage.budget_tracker import BudgetTracker
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,8 @@ async def lifespan(app: FastAPI):
     provider_registry = ProviderRegistry(settings)
     policy_engine = PolicyEngine(settings.routing_policies_dir, virtual_registry=virtual_registry)
     routing_brain = RoutingBrain(settings)
-    routing_engine = RoutingEngine(routing_brain, policy_engine, provider_registry)
+    budget_tracker = BudgetTracker(settings.redis_url, settings.models_config_path)
+    routing_engine = RoutingEngine(routing_brain, policy_engine, provider_registry, budget_tracker)
     audit_logger = AuditLogger(log_path="logs/audit.jsonl")
 
     # Store on app state for dependency injection
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
     app.state.policy_engine = policy_engine
     app.state.routing_brain = routing_brain
     app.state.routing_engine = routing_engine
+    app.state.budget_tracker = budget_tracker
     app.state.audit_logger = audit_logger
 
     logger.info(

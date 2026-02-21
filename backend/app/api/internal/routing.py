@@ -18,6 +18,12 @@ class SimulateRequest(BaseModel):
     budget_pct: float = 0.0
 
 
+class BudgetStatusRequest(BaseModel):
+    tenant_id: str = "default"
+    user_id: str = "unknown"
+    department: str = "rd"
+
+
 @router.post("/routing/policies/reload")
 async def reload_policies(request: Request):
     policy_engine = request.app.state.policy_engine
@@ -178,4 +184,45 @@ async def simulate_routing(body: SimulateRequest, request: Request):
             for t in trace
         ],
         "constraints_applied": constraints,
+    }
+
+
+@router.post("/routing/budget/status")
+async def budget_status(body: BudgetStatusRequest, request: Request):
+    """
+    Return live Redis budget counters + usage percentage for a tenant/user/department.
+    Useful for testing budget guardrails from UI without sending chat requests.
+    """
+    policy_engine = request.app.state.policy_engine
+    budget_tracker = request.app.state.budget_tracker
+
+    policy = policy_engine.resolve_policy(body.department, tenant_id=body.tenant_id)
+    if not policy:
+        return {
+            "tenant_id": body.tenant_id,
+            "user_id": body.user_id,
+            "department": body.department,
+            "policy_found": False,
+            "budget_pct": 0.0,
+            "limits": {},
+            "spend": {"tenant_spend_usd": 0.0, "user_spend_usd": 0.0},
+        }
+
+    spend = await budget_tracker.get_spend(body.tenant_id, body.user_id)
+    pct = await budget_tracker.get_budget_pct(body.tenant_id, body.user_id, policy.budget_controls)
+    return {
+        "tenant_id": body.tenant_id,
+        "user_id": body.user_id,
+        "department": body.department,
+        "policy_found": True,
+        "policy_version": policy_engine.get_policy_version(body.department, tenant_id=body.tenant_id),
+        "budget_pct": round(pct, 4),
+        "limits": {
+            "daily_limit_usd_per_tenant": policy.budget_controls.daily_limit_usd_per_tenant,
+            "daily_limit_usd_per_user": policy.budget_controls.daily_limit_usd_per_user,
+            "max_tier": policy.budget_controls.max_tier,
+            "downgrade_at_percent": policy.budget_controls.downgrade_at_percent,
+            "force_cheap_at_percent": policy.budget_controls.force_cheap_at_percent,
+        },
+        "spend": spend,
     }
