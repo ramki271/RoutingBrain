@@ -1,4 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_KEY_STORAGE = "routingbrain_api_key";
+const DEFAULT_API_KEY = "rb-dev-key-1";
 
 type RoutingApiError = Error & {
   governance_blocked?: boolean;
@@ -35,22 +37,51 @@ export interface SendMessageOptions {
   department?: string;
   tenantId?: string;
   userId?: string;
+  apiKey?: string;
   stream?: boolean;
   onToken?: (token: string) => void;
   onRoutingDecision?: (decision: RoutingDecision) => void;
+}
+
+function resolveApiKey(explicitApiKey?: string): string {
+  if (explicitApiKey) return explicitApiKey;
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(API_KEY_STORAGE);
+    if (stored && stored.trim()) return stored.trim();
+  }
+  return DEFAULT_API_KEY;
+}
+
+export function setSavedApiKey(apiKey: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(API_KEY_STORAGE, apiKey.trim());
+}
+
+export function getSavedApiKey(): string {
+  return resolveApiKey();
 }
 
 export async function sendMessage(opts: SendMessageOptions): Promise<{
   content: string;
   routing: RoutingDecision | null;
 }> {
-  const { messages, department = "rd", tenantId, userId, stream = true, onToken, onRoutingDecision } = opts;
+  const {
+    messages,
+    department = "rd",
+    tenantId,
+    userId,
+    apiKey,
+    stream = true,
+    onToken,
+    onRoutingDecision,
+  } = opts;
+  const authKey = resolveApiKey(apiKey);
 
   const response = await fetch(`${API_BASE}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer rb-dev-key-1",
+      Authorization: `Bearer ${authKey}`,
       "X-Department": department,
       ...(tenantId ? { "X-Tenant-Id": tenantId } : {}),
       ...(userId ? { "X-User-Id": userId } : {}),
@@ -186,16 +217,18 @@ export async function sendMessage(opts: SendMessageOptions): Promise<{
   return { content, routing };
 }
 
-export async function reloadPolicies(): Promise<void> {
+export async function reloadPolicies(apiKey?: string): Promise<void> {
+  const authKey = resolveApiKey(apiKey);
   await fetch(`${API_BASE}/internal/routing/policies/reload`, {
     method: "POST",
-    headers: { Authorization: "Bearer rb-dev-key-1" },
+    headers: { Authorization: `Bearer ${authKey}` },
   });
 }
 
-export async function fetchPolicies() {
+export async function fetchPolicies(apiKey?: string) {
+  const authKey = resolveApiKey(apiKey);
   const res = await fetch(`${API_BASE}/internal/routing/policies`, {
-    headers: { Authorization: "Bearer rb-dev-key-1" },
+    headers: { Authorization: `Bearer ${authKey}` },
   });
   return res.json();
 }
@@ -208,6 +241,7 @@ export interface SimulateRequest {
   department: string;
   risk_level?: string;
   budget_pct?: number;
+  api_key?: string;
 }
 
 export interface SimulateResult {
@@ -219,10 +253,13 @@ export interface SimulateResult {
 }
 
 export async function simulateRouting(body: SimulateRequest): Promise<SimulateResult> {
+  const authKey = resolveApiKey(body.api_key);
+  const payload = { ...body };
+  delete payload.api_key;
   const res = await fetch(`${API_BASE}/internal/routing/simulate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer rb-dev-key-1" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authKey}` },
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Simulate failed: ${res.status}`);
   return res.json();
@@ -273,14 +310,17 @@ export async function fetchAuditLogs(params?: {
   risk_level?: string;
   department?: string;
   audit_required?: boolean;
+  api_key?: string;
 }): Promise<AuditLogsResponse> {
+  const authKey = resolveApiKey(params?.api_key);
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.risk_level) qs.set("risk_level", params.risk_level);
   if (params?.department) qs.set("department", params.department);
   if (params?.audit_required !== undefined) qs.set("audit_required", String(params.audit_required));
+  if (params?.api_key !== undefined) qs.delete("api_key");
   const res = await fetch(`${API_BASE}/internal/audit/logs?${qs}`, {
-    headers: { Authorization: "Bearer rb-dev-key-1" },
+    headers: { Authorization: `Bearer ${authKey}` },
   });
   if (!res.ok) throw new Error(`Audit log fetch failed: ${res.status}`);
   return res.json();
@@ -288,7 +328,7 @@ export async function fetchAuditLogs(params?: {
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`, {
-    headers: { Authorization: "Bearer rb-dev-key-1" },
+    headers: { Authorization: `Bearer ${resolveApiKey()}` },
   });
   return res.json();
 }
@@ -297,6 +337,7 @@ export interface BudgetStatusRequest {
   tenant_id: string;
   user_id: string;
   department: string;
+  api_key?: string;
 }
 
 export interface BudgetStatusResponse {
@@ -321,11 +362,39 @@ export interface BudgetStatusResponse {
 }
 
 export async function fetchBudgetStatus(body: BudgetStatusRequest): Promise<BudgetStatusResponse> {
+  const authKey = resolveApiKey(body.api_key);
+  const payload = { ...body };
+  delete payload.api_key;
   const res = await fetch(`${API_BASE}/internal/routing/budget/status`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer rb-dev-key-1" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authKey}` },
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Budget status failed: ${res.status}`);
+  return res.json();
+}
+
+export interface AuthContextResponse {
+  user_id: string;
+  tenant_id: string;
+  department: string;
+}
+
+export async function fetchAuthContext(params?: {
+  api_key?: string;
+  user_id?: string;
+  tenant_id?: string;
+  department?: string;
+}): Promise<AuthContextResponse> {
+  const authKey = resolveApiKey(params?.api_key);
+  const res = await fetch(`${API_BASE}/internal/auth/context`, {
+    headers: {
+      Authorization: `Bearer ${authKey}`,
+      ...(params?.user_id ? { "X-User-Id": params.user_id } : {}),
+      ...(params?.tenant_id ? { "X-Tenant-Id": params.tenant_id } : {}),
+      ...(params?.department ? { "X-Department": params.department } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Auth context failed: ${res.status}`);
   return res.json();
 }

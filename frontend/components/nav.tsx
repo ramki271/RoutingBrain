@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrainCircuit, FlaskConical, GitBranch, BarChart2, ShieldCheck, TestTube2 } from "lucide-react";
+import { BrainCircuit, FlaskConical, GitBranch, BarChart2, ShieldCheck, TestTube2, SlidersHorizontal } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Playground", icon: FlaskConical },
   { href: "/inspector", label: "Inspector", icon: GitBranch },
   { href: "/lab", label: "Lab", icon: TestTube2 },
+  { href: "/admin", label: "Admin", icon: SlidersHorizontal },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/audit", label: "Audit Log", icon: ShieldCheck },
 ];

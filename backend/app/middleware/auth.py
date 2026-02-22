@@ -3,7 +3,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from typing import Optional
 
+from app.core.logging import get_logger
+
 EXCLUDED_PATHS = {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}
+logger = get_logger(__name__)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -42,13 +45,36 @@ class AuthMiddleware(BaseHTTPMiddleware):
         elif "api-key" in request.headers:
             api_key = request.headers["api-key"].strip()
 
-        if not api_key or api_key not in self.valid_api_keys:
+        if not api_key:
             return JSONResponse(
                 status_code=401,
                 content={"error": {"code": "authentication_error", "message": "Invalid or missing API key"}},
             )
 
-        meta = self.api_key_metadata.get(api_key, {})
+        meta = self.api_key_metadata.get(api_key)
+
+        if meta is None and api_key in self.valid_api_keys:
+            meta = {}
+
+        # DB-backed key validation (Supabase/Postgres)
+        if meta is None:
+            store = getattr(request.app.state, "api_key_store", None)
+            if store is not None:
+                resolved = await store.resolve(api_key)
+                if resolved:
+                    meta = {
+                        "tenant_id": resolved.tenant_id,
+                        "user_id": resolved.user_id,
+                        "department": resolved.department,
+                        "allowed_departments": resolved.allowed_departments,
+                    }
+
+        if meta is None:
+            logger.info("auth_rejected", reason="key_not_found")
+            return JSONResponse(
+                status_code=401,
+                content={"error": {"code": "authentication_error", "message": "Invalid or missing API key"}},
+            )
 
         request.state.user_id = request.headers.get("X-User-Id", meta.get("user_id", "unknown"))
 

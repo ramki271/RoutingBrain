@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.internal import audit as audit_admin, health, routing as routing_admin
+from app.api.internal import audit as audit_admin, auth as auth_admin, health, routing as routing_admin
 from app.api.v1 import chat, models
 from app.core.config import get_settings
 from app.core.exceptions import RoutingBrainError, routing_brain_exception_handler
@@ -15,6 +15,8 @@ from app.observability.audit_log import AuditLogger
 from app.routing.engine import RoutingEngine
 from app.routing.policy import PolicyEngine
 from app.routing.routing_brain import RoutingBrain
+from app.storage.api_key_store import ApiKeyStore
+from app.storage.db import create_db_engine
 from app.routing.virtual_models import VirtualModelRegistry
 from app.storage.budget_tracker import BudgetTracker
 
@@ -29,6 +31,8 @@ async def lifespan(app: FastAPI):
     logger.info("startup", env=settings.app_env)
 
     # Initialize components
+    db_engine = create_db_engine(settings.database_url)
+    api_key_store = ApiKeyStore(db_engine)
     virtual_registry = VirtualModelRegistry(settings.models_config_path)
     provider_registry = ProviderRegistry(settings)
     policy_engine = PolicyEngine(settings.routing_policies_dir, virtual_registry=virtual_registry)
@@ -39,6 +43,8 @@ async def lifespan(app: FastAPI):
 
     # Store on app state for dependency injection
     app.state.settings = settings
+    app.state.db_engine = db_engine
+    app.state.api_key_store = api_key_store
     app.state.virtual_registry = virtual_registry
     app.state.provider_registry = provider_registry
     app.state.policy_engine = policy_engine
@@ -54,6 +60,11 @@ async def lifespan(app: FastAPI):
     )
 
     yield
+
+    try:
+        await db_engine.dispose()
+    except Exception:
+        pass
 
     logger.info("shutdown")
 
@@ -103,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(health.router, prefix="/internal")
     app.include_router(routing_admin.router, prefix="/internal")
+    app.include_router(auth_admin.router, prefix="/internal")
     app.include_router(audit_admin.router, prefix="/internal")
 
     return app

@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { fetchBudgetStatus, sendMessage, simulateRouting, SimulateResult, BudgetStatusResponse } from "@/lib/api";
+import {
+  fetchBudgetStatus,
+  sendMessage,
+  simulateRouting,
+  SimulateResult,
+  BudgetStatusResponse,
+  getSavedApiKey,
+  setSavedApiKey,
+} from "@/lib/api";
 import { TestTube2, PlayCircle, Wallet, MessageSquare } from "lucide-react";
 
 const TASK_TYPES = ["code_generation","code_review","test_generation","debugging","architecture_design","documentation","requirement_analysis","question_answer","data_analysis","math_reasoning","general"];
@@ -11,6 +19,7 @@ const RISK_LEVELS = ["auto","low","medium","high","regulated"];
 type RoutingApiError = Error & { message: string };
 
 export default function LabPage() {
+  const [apiKey, setApiKey] = useState(getSavedApiKey());
   const [tenantId, setTenantId] = useState("acme");
   const [userId, setUserId] = useState("user-1");
   const [department, setDepartment] = useState("rd");
@@ -42,6 +51,7 @@ export default function LabPage() {
     setError("");
     try {
       const result = await simulateRouting({
+        api_key: apiKey,
         tenant_id: tenantId,
         task_type: taskType,
         complexity,
@@ -63,6 +73,7 @@ export default function LabPage() {
     setError("");
     try {
       const result = await fetchBudgetStatus({
+        api_key: apiKey,
         tenant_id: tenantId,
         user_id: userId,
         department,
@@ -87,6 +98,7 @@ export default function LabPage() {
         department,
         tenantId,
         userId,
+        apiKey,
         stream: false,
       });
       setChatResult(result.content);
@@ -107,6 +119,21 @@ export default function LabPage() {
       </div>
       <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 18 }}>
         Test tenant-aware routing and live Redis budget enforcement without leaving the UI.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 12 }}>
+        <input
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="API key"
+          style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-geist-mono)" }}
+        />
+        <button
+          onClick={() => setSavedApiKey(apiKey)}
+          style={btnStyle("var(--accent)")}
+        >
+          Save Key
+        </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
